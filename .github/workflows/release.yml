@@ -1,0 +1,147 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build distribution packages
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.8'
+        
+    - name: Install build dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build wheel setuptools
+        
+    - name: Build source distribution and wheel
+      run: |
+        python -m build
+        
+    - name: List built files
+      run: ls -la dist/
+      
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: dist-packages
+        path: dist/
+        retention-days: 7
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: dist-packages
+        path: dist/
+        
+    - name: Get tag name
+      id: tag
+      run: echo "tag_name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      
+    - name: Generate changelog
+      id: changelog
+      run: |
+        # Extract version from tag (remove 'v' prefix if present)
+        VERSION=${GITHUB_REF#refs/tags/v}
+        VERSION=${VERSION#refs/tags/}
+        
+        # Create a simple changelog entry
+        echo "## Release $VERSION" > RELEASE_NOTES.md
+        echo "" >> RELEASE_NOTES.md
+        echo "### What's New" >> RELEASE_NOTES.md
+        echo "" >> RELEASE_NOTES.md
+        
+        # Get commits since last tag
+        if git describe --tags --abbrev=0 HEAD^ >/dev/null 2>&1; then
+          LAST_TAG=$(git describe --tags --abbrev=0 HEAD^)
+          echo "Changes since $LAST_TAG:" >> RELEASE_NOTES.md
+          git log --pretty=format:"- %s (%h)" $LAST_TAG..HEAD >> RELEASE_NOTES.md
+        else
+          echo "- Initial release" >> RELEASE_NOTES.md
+        fi
+        
+        echo "" >> RELEASE_NOTES.md
+        echo "### Installation" >> RELEASE_NOTES.md
+        echo "" >> RELEASE_NOTES.md
+        echo '```bash' >> RELEASE_NOTES.md
+        echo "pip install walle==$VERSION" >> RELEASE_NOTES.md
+        echo '```' >> RELEASE_NOTES.md
+        echo "" >> RELEASE_NOTES.md
+        echo "### Files in this release:" >> RELEASE_NOTES.md
+        echo "" >> RELEASE_NOTES.md
+        for file in dist/*; do
+          echo "- $(basename $file)" >> RELEASE_NOTES.md
+        done
+        
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ steps.tag.outputs.tag_name }}
+        name: Release ${{ steps.tag.outputs.tag_name }}
+        body_path: RELEASE_NOTES.md
+        files: |
+          dist/*.whl
+          dist/*.tar.gz
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+        append_body: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+  test-install:
+    name: Test installation from built packages
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
+        
+    steps:
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: dist-packages
+        path: dist/
+        
+    - name: Test wheel installation
+      run: |
+        pip install dist/*.whl
+        walle --help
+        walle --version
+        
+    - name: Test source distribution installation
+      run: |
+        pip uninstall -y walle
+        pip install dist/*.tar.gz
+        walle --help
+        walle --version
