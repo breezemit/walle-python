@@ -1,0 +1,25 @@
+{
+  "product_name": "My Product v2.0",
+  "projects": [
+    {
+      "project": "group/project1",
+      "ref": "master",
+      "tag": "v1.0.0",
+      "since": "v0.9.0"
+    },
+    {
+      "project": "group/project2", 
+      "ref": "main",
+      "tag": "v2.0.0",
+      "since": "abc123def456"
+    },
+    {
+      "project": "custom-gitlab/project3",
+      "ref": "master",
+      "tag": "v1.5.0",
+      "since": "feature-branch",
+      "gitlab_host": "https://custom.gitlab.com",
+      "gitlab_token": "custom-token-if-needed"
+    }
+  ]
+}

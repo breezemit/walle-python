@@ -1,0 +1,6 @@
+{
+  "gitlab_host": "https://gitlab.com",
+  "gitlab_token": "your-gitlab-token-here",
+  "project": "group/project-name",
+  "since": "v1.0.0"
+}
